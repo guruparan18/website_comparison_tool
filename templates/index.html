@@ -39,7 +39,7 @@
             <div class="status">
                 Status: {{ crawl_status.message }}
                 {% if crawl_status.running %}
-                    (Running... please wait for results to appear below or refresh the page periodically)
+                    (Running... auto-refreshes every 10 seconds to update status and results.)
                 {% endif %}
             </div>
         {% endif %}
@@ -63,13 +63,13 @@
         <div class="results-grid">
             {% for result in results %}
             <div class="result-item">
-                <h3>Page Title: {{ result.title1 if result.title1 else (result.title2 if result.title2 else "N/A") }}</h3>
+                <h3>Page Title: {{ result.title1 if result.title1 != "N/A" else (result.title2 if result.title2 != "N/A" else "N/A") }}</h3>
                 <p>URL1: <a href="{{ result.full_url1 }}" target="_blank">{{ result.full_url1 }}</a></p>
                 <p>URL2: <a href="{{ result.full_url2 }}" target="_blank">{{ result.full_url2 }}</a></p>
                 {% if result.score is not none %}
                     <p>Matching Score (SSIM): {{ "%.4f"|format(result.score) }}</p>
                 {% else %}
-                    <p>Matching Score: N/A (One or both pages not found/crawled)</p>
+                    <p>Matching Score: N/A <span style="font-size: 0.9em; color: #555;">(Score not available)</span></p>
                 {% endif %}
                 <div class="comparison-row">
                     <div class="image-container">
@@ -119,6 +119,23 @@
                 closeModal();
             }
         }
+       // Auto-refresh logic
+        (function() {
+            // Access the crawl_status.running variable passed from Flask to the template.
+            // The 'tojson' filter ensures that boolean True/False from Python
+            // becomes JavaScript true/false.
+            var isCrawling = {{ crawl_status.running | default(false) | tojson }};
+            var refreshInterval = 10000; // 10 seconds in milliseconds
+
+            if (isCrawling) {
+                console.log("Crawling is in progress. Page will automatically refresh in " + (refreshInterval / 1000) + " seconds.");
+                setTimeout(function() {
+                    window.location.reload(true); // Pass true to force reload from server, not cache
+                }, refreshInterval);
+            } else {
+                console.log("Crawling is not in progress. Auto-refresh disabled.");
+            }
+        })();
     </script>
 </body>
 </html>
