@@ -103,35 +103,45 @@
                 <h3>Page Title: {{ result.title1 if result.title1 != "N/A" else (result.title2 if result.title2 != "N/A" else "N/A") }}</h3>
                 <p>URL1: <a href="{{ result.full_url1 }}" target="_blank">{{ result.full_url1 }}</a></p>
                 <p>URL2: <a href="{{ result.full_url2 }}" target="_blank">{{ result.full_url2 }}</a></p>
+                
                 {% if result.score is not none %}
                     <p>
-                        Matching Score (SSIM): <strong>{{ result.ssim_classification_text }}</strong> ({{ "%.4f"|format(result.score) }})
+                        SSIM: <strong>{{ result.ssim_classification_text }}</strong> ({{ "%.4f"|format(result.score) }})
                     </p>
+                    {% if result.diff_percent is not none %}
+                        <p>Pixel Difference: {{ "%.2f"|format(result.diff_percent) }}%</p>
+                    {% endif %}
                 {% else %}
-                    <p>Matching Score: N/A <span style="font-size: 0.9em; color: #555;">(Score not available)</span></p>
+                    <p>Matching Score (SSIM): N/A <span style="font-size: 0.9em; color: #555;">(Score not available)</span></p>
                 {% endif %}
+            
                 <div class="comparison-row">
                     <div class="image-container">
                         <p>Legacy Screenshot:</p>
                         {% if result.img1_thumb and result.img1_full %}
-                            <img src="{{ url_for('static', filename=result.img1_thumb) }}" class="thumbnail" alt="Legacy Screenshot for {{ result.title1 }}" onclick="openModal('{{ url_for('static', filename=result.img1_full) }}')">
-                        {% else %}
-                            <p>Not available</p>
-                        {% endif %}
+                            <img src="{{ url_for('static', filename=result.img1_thumb) }}" class="thumbnail" alt="Legacy Screenshot" onclick="openModal('{{ url_for('static', filename=result.img1_full) }}')">
+                        {% else %}<p>Not available</p>{% endif %}
                     </div>
                     <div class="image-container">
                         <p>Modern Screenshot:</p>
                         {% if result.img2_thumb and result.img2_full %}
-                            <img src="{{ url_for('static', filename=result.img2_thumb) }}" class="thumbnail" alt="Modern Screenshot for {{ result.title2 }}" onclick="openModal('{{ url_for('static', filename=result.img2_full) }}')">
-                        {% else %}
-                            <p>Not available</p>
-                        {% endif %}
+                            <img src="{{ url_for('static', filename=result.img2_thumb) }}" class="thumbnail" alt="Modern Screenshot" onclick="openModal('{{ url_for('static', filename=result.img2_full) }}')">
+                        {% else %}<p>Not available</p>{% endif %}
                     </div>
+                    {# Add a container for the Diff Image Thumbnail #}
+                    {% if result.diff_image_template_path %}
+                    <div class="image-container">
+                        <p>Difference Map:</p>
+                        {# Create a thumbnail for the diff image or link directly if small enough #}
+                        {# For now, let's assume diff image is directly viewable; thumbnailing it is an extra step #}
+                        <img src="{{ url_for('static', filename=result.diff_image_template_path) }}" class="thumbnail" alt="Difference Map" onclick="openModal('{{ url_for('static', filename=result.diff_image_template_path) }}')">
+                    </div>
+                    {% endif %}
                 </div>
             </div>
             {% else %}
-            <p>No comparison results yet, or no matching pages found. If a crawl is running, this page will auto-refresh.</p>
-            {% endfor %}
+                <p>No comparison results yet...</p>
+            {% endfor %}            
         </div>
         {% endif %}
     </div>

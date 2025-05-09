@@ -3,18 +3,23 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service as ChromeService # For newer Selenium
-from webdriver_manager.chrome import ChromeDriverManager # Optional: for easy driver management
+from selenium.webdriver.chrome.service import (
+    Service as ChromeService,
+)  # For newer Selenium
+from webdriver_manager.chrome import (
+    ChromeDriverManager,
+)  # Optional: for easy driver management
 import time
 import os
 from PIL import Image
 
 ELEMENT_SELECTORS_TO_HIDE_ON_NEW_SITE = [
     ".usa-accordion",  # Selector for the accordion
-    "#alertBanner"     # Selector for the alert banner (using ID is more specific)
+    "#alertBanner",  # Selector for the alert banner (using ID is more specific)
 ]
 
 EXTENSIONS_TO_IGNORE = [".pdf", ".mp4"]
+
 
 # --- Helper to get domain ---
 def get_domain(url):
@@ -22,6 +27,7 @@ def get_domain(url):
         return urlparse(url).netloc
     except Exception:
         return None
+
 
 # --- URL Normalization for path matching ---
 def normalize_path_segment(path_segment):
@@ -31,33 +37,50 @@ def normalize_path_segment(path_segment):
     s = s.replace("_", "-")
     return s
 
+
 def get_normalized_relative_path(base_url, url):
     parsed_url = urlparse(url)
     # Ensure we only process paths and ignore queries/fragments for normalization
-    path_segments = [normalize_path_segment(seg) for seg in parsed_url.path.strip("/").split("/") if seg]
+    path_segments = [
+        normalize_path_segment(seg)
+        for seg in parsed_url.path.strip("/").split("/")
+        if seg
+    ]
     normalized_path = "/".join(path_segments)
     return normalized_path
 
 
 TARGET_DESKTOP_WIDTH = 1920
-TARGET_INITIAL_DESKTOP_HEIGHT = 1080 # A common default, also acts as a minimum screenshot height
+TARGET_INITIAL_DESKTOP_HEIGHT = (
+    1080  # A common default, also acts as a minimum screenshot height
+)
+
+
 # --- Selenium Screenshot Function ---
-def take_fullpage_screenshot(driver, url, output_path, 
-                             is_modern_site_with_elements_to_hide=False, 
-                             selectors_to_hide=None): # Changed parameter name for clarity
+def take_fullpage_screenshot(
+    driver,
+    url,
+    output_path,
+    is_modern_site_with_elements_to_hide=False,
+    selectors_to_hide=None,
+):  # Changed parameter name for clarity
     """
     Navigates to a URL, optionally hides specified elements, and takes a full-page screenshot.
     """
     try:
         driver.get(url)
-        time.sleep(3) # Wait for initial page load
+        time.sleep(3)  # Wait for initial page load
 
         # Conditionally hide elements if this is the modern site and selectors are provided
-        if is_modern_site_with_elements_to_hide and selectors_to_hide and isinstance(selectors_to_hide, list):
+        if (
+            is_modern_site_with_elements_to_hide
+            and selectors_to_hide
+            and isinstance(selectors_to_hide, list)
+        ):
             print(f"[{url}] Attempting to hide specified elements for modern site...")
             any_element_actioned = False
             for selector in selectors_to_hide:
-                if not selector.strip(): # Skip empty selectors
+                if not selector.strip():  # Skip empty selectors
                     continue
                 try:
                     # JavaScript to find all elements matching the selector and set their display to 'none'
@@ -74,19 +97,28 @@ def take_fullpage_screenshot(driver, url, output_path,
                     """
                     num_hidden = driver.execute_script(js_hide_elements)
                     if num_hidden > 0:
-                        print(f"    - Hidden {num_hidden} element(s) for selector '{selector}'.")
+                        print(
+                            f"    - Hidden {num_hidden} element(s) for selector '{selector}'."
+                        )
                         any_element_actioned = True
                     else:
                         print(f"    - No elements found for selector '{selector}'.")
                 except Exception as e:
-                    print(f"    - Error trying to hide elements for selector '{selector}': {e}")
-            
-            if any_element_actioned:
-                time.sleep(0.5) # Give a brief moment for the page to reflow if anything was hidden
-                print(f"[{url}] Element hiding process completed.")
-        elif is_modern_site_with_elements_to_hide and selectors_to_hide: # If it's not a list
-             print(f"[{url}] Warning: selectors_to_hide was provided but is not a list. Type: {type(selectors_to_hide)}")
+                    print(
+                        f"    - Error trying to hide elements for selector '{selector}': {e}"
+                    )
 
+            if any_element_actioned:
+                time.sleep(
+                    0.5
+                )  # Give a brief moment for the page to reflow if anything was hidden
+                print(f"[{url}] Element hiding process completed.")
+        elif (
+            is_modern_site_with_elements_to_hide and selectors_to_hide
+        ):  # If it's not a list
+            print(
+                f"[{url}] Warning: selectors_to_hide was provided but is not a list. Type: {type(selectors_to_hide)}"
+            )
 
         # Reset window to a known state before measuring the new page's content.
         # print(f"[{url}] Resetting window to: {TARGET_DESKTOP_WIDTH}x{TARGET_INITIAL_DESKTOP_HEIGHT}") # Already verbose
@@ -108,7 +140,7 @@ def take_fullpage_screenshot(driver, url, output_path,
             };
         """
         dimensions = driver.execute_script(js_get_page_dimensions)
-        page_content_height = dimensions['height']
+        page_content_height = dimensions["height"]
         screenshot_width = TARGET_DESKTOP_WIDTH
         screenshot_height = max(page_content_height, TARGET_INITIAL_DESKTOP_HEIGHT)
 
@@ -146,18 +178,23 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument(f"window-size={TARGET_DESKTOP_WIDTH},{TARGET_INITIAL_DESKTOP_HEIGHT}")
+    chrome_options.add_argument(
+        f"window-size={TARGET_DESKTOP_WIDTH},{TARGET_INITIAL_DESKTOP_HEIGHT}"
+    )
 
     try:
-        driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=chrome_options)
+        driver = webdriver.Chrome(
+            service=ChromeService(ChromeDriverManager().install()),
+            options=chrome_options,
+        )
     except Exception as e:
         print(f"Failed to initialize WebDriver: {e}.")
         return {}
-    
+
     count = 0
     while to_visit:
         current_url = to_visit.pop()
-        
+
         parsed_current_url = urlparse(current_url)
         current_url_path_lower = parsed_current_url.path.lower()
         if any(current_url_path_lower.endswith(ext) for ext in EXTENSIONS_TO_IGNORE):
@@ -166,14 +203,16 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
             continue
         if current_url in visited:
             continue
-        
+
         visited.add(current_url)
         print(f"Visiting: {current_url} (Is Modern Site: {is_modern_site})")
 
         try:
-            relative_url_path = parsed_current_url.path.strip('/')
-            if not relative_url_path: filename_base = "index"
-            else: filename_base = relative_url_path.replace('/', '_').replace('.', '_')
+            relative_url_path = parsed_current_url.path.strip("/")
+            if not relative_url_path:
+                filename_base = "index"
+            else:
+                filename_base = relative_url_path.replace("/", "_").replace(".", "_")
             screenshot_filename = f"page_{count}_{filename_base}.png"
             full_screenshot_path = os.path.join(output_dir_base, screenshot_filename)
 
@@ -181,46 +220,60 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
                 driver,
                 current_url,
                 full_screenshot_path,
-                is_modern_site_with_elements_to_hide=is_modern_site, # Pass the flag
+                is_modern_site_with_elements_to_hide=is_modern_site,  # Pass the flag
                 # Pass the list of selectors if it's the modern site, otherwise None
-                selectors_to_hide=ELEMENT_SELECTORS_TO_HIDE_ON_NEW_SITE if is_modern_site else None 
+                selectors_to_hide=ELEMENT_SELECTORS_TO_HIDE_ON_NEW_SITE
+                if is_modern_site
+                else None,
             )
             count += 1
-            
+
             if page_title is not None:
                 normalized_path = get_normalized_relative_path(start_url, current_url)
                 pages_data[normalized_path] = {
-                    'img_path': full_screenshot_path,
-                    'title': page_title,
-                    'full_url': current_url
+                    "img_path": full_screenshot_path,
+                    "title": page_title,
+                    "full_url": current_url,
                 }
 
             # ... (rest of your link finding logic) ...
             try:
                 page_content_response = requests.get(current_url, timeout=10)
                 page_content_response.raise_for_status()
-                if 'text/html' not in page_content_response.headers.get('Content-Type', '').lower():
+                if (
+                    "text/html"
+                    not in page_content_response.headers.get("Content-Type", "").lower()
+                ):
                     # print(f"Skipping link extraction from non-HTML page: {current_url}") # Already verbose
                     continue
-                soup = BeautifulSoup(page_content_response.content, 'html.parser')
+                soup = BeautifulSoup(page_content_response.content, "html.parser")
             except requests.RequestException as e:
-                print(f"Could not fetch content for link extraction from {current_url}: {e}")
+                print(
+                    f"Could not fetch content for link extraction from {current_url}: {e}"
+                )
                 continue
 
-            for link in soup.find_all('a', href=True):
-                href = link['href']
+            for link in soup.find_all("a", href=True):
+                href = link["href"]
                 joined_url = urljoin(current_url, href)
                 parsed_joined_url = urlparse(joined_url)
                 clean_url_path_lower = parsed_joined_url.path.lower()
-                clean_url_for_visit = parsed_joined_url._replace(query="", fragment="").geturl()
+                clean_url_for_visit = parsed_joined_url._replace(
+                    query="", fragment=""
+                ).geturl()
 
-                if any(clean_url_path_lower.endswith(ext) for ext in EXTENSIONS_TO_IGNORE):
+                if any(
+                    clean_url_path_lower.endswith(ext) for ext in EXTENSIONS_TO_IGNORE
+                ):
                     # print(f"Ignoring discovered link with extension '{clean_url_path_lower.split('.')[-1]}': {joined_url}")
                     continue
-                if get_domain(clean_url_for_visit) == domain_name and clean_url_for_visit not in visited:
+                if (
+                    get_domain(clean_url_for_visit) == domain_name
+                    and clean_url_for_visit not in visited
+                ):
                     to_visit.add(clean_url_for_visit)
         except Exception as e:
             print(f"Error processing {current_url}: {e}")
-            
+
     driver.quit()
     return pages_data
