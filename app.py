@@ -70,10 +70,10 @@ def run_comparison_workflow(url1, url2, path1, path2):
     global comparison_results, crawl_status
     try:
         print(f"Starting crawl for Website 1: {url1}")
-        pages1 = crawler.crawl_website(url1, path1)
+        pages1 = crawler.crawl_website(url1, path1, is_modern_site=False)
         print(f"Found {len(pages1)} pages for Website 1.")
         print(f"Starting crawl for Website 2: {url2}")
-        pages2 = crawler.crawl_website(url2, path2)
+        pages2 = crawler.crawl_website(url2, path2, is_modern_site=True)
         print(f"Found {len(pages2)} pages for Website 2.")
         print("Comparing pages...")
         comparison_results = comparator.compare_pages(pages1, pages2, url1, url2)

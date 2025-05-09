@@ -9,6 +9,13 @@ import time
 import os
 from PIL import Image
 
+ELEMENT_SELECTORS_TO_HIDE_ON_NEW_SITE = [
+    ".usa-accordion",  # Selector for the accordion
+    "#alertBanner"     # Selector for the alert banner (using ID is more specific)
+]
+
+EXTENSIONS_TO_IGNORE = [".pdf", ".mp4"]
+
 # --- Helper to get domain ---
 def get_domain(url):
     try:
@@ -35,22 +42,57 @@ def get_normalized_relative_path(base_url, url):
 TARGET_DESKTOP_WIDTH = 1920
 TARGET_INITIAL_DESKTOP_HEIGHT = 1080 # A common default, also acts as a minimum screenshot height
 # --- Selenium Screenshot Function ---
-def take_fullpage_screenshot(driver, url, output_path):
+def take_fullpage_screenshot(driver, url, output_path, 
+                             is_modern_site_with_elements_to_hide=False, 
+                             selectors_to_hide=None): # Changed parameter name for clarity
+    """
+    Navigates to a URL, optionally hides specified elements, and takes a full-page screenshot.
+    """
     try:
         driver.get(url)
-        # Allow time for initial page load, JavaScript execution, and content rendering
-        time.sleep(3) # Adjust this based on typical page load times
+        time.sleep(3) # Wait for initial page load
 
-        # 1. Reset window to a defined "standard" size before measuring the new page.
-        # This is crucial to ensure that the scrollHeight of a short page isn't
-        # measured while the viewport is still artificially tall from a previous long page.
-        print(f"[{url}] Resetting window to: {TARGET_DESKTOP_WIDTH}x{TARGET_INITIAL_DESKTOP_HEIGHT}")
+        # Conditionally hide elements if this is the modern site and selectors are provided
+        if is_modern_site_with_elements_to_hide and selectors_to_hide and isinstance(selectors_to_hide, list):
+            print(f"[{url}] Attempting to hide specified elements for modern site...")
+            any_element_actioned = False
+            for selector in selectors_to_hide:
+                if not selector.strip(): # Skip empty selectors
+                    continue
+                try:
+                    # JavaScript to find all elements matching the selector and set their display to 'none'
+                    js_hide_elements = f"""
+                        let els = document.querySelectorAll('{selector}');
+                        let hiddenCount = 0;
+                        if (els.length > 0) {{
+                            els.forEach(function(el) {{
+                                el.style.display = 'none';
+                                hiddenCount++;
+                            }});
+                        }}
+                        return hiddenCount; // Return how many elements were hidden by this selector
+                    """
+                    num_hidden = driver.execute_script(js_hide_elements)
+                    if num_hidden > 0:
+                        print(f"    - Hidden {num_hidden} element(s) for selector '{selector}'.")
+                        any_element_actioned = True
+                    else:
+                        print(f"    - No elements found for selector '{selector}'.")
+                except Exception as e:
+                    print(f"    - Error trying to hide elements for selector '{selector}': {e}")
+            
+            if any_element_actioned:
+                time.sleep(0.5) # Give a brief moment for the page to reflow if anything was hidden
+                print(f"[{url}] Element hiding process completed.")
+        elif is_modern_site_with_elements_to_hide and selectors_to_hide: # If it's not a list
+             print(f"[{url}] Warning: selectors_to_hide was provided but is not a list. Type: {type(selectors_to_hide)}")
+
+
+        # Reset window to a known state before measuring the new page's content.
+        # print(f"[{url}] Resetting window to: {TARGET_DESKTOP_WIDTH}x{TARGET_INITIAL_DESKTOP_HEIGHT}") # Already verbose
         driver.set_window_size(TARGET_DESKTOP_WIDTH, TARGET_INITIAL_DESKTOP_HEIGHT)
-        # Allow a brief moment for the browser to reflow after this reset
         time.sleep(0.5)
 
-        # 2. Get the actual content dimensions of the *currently loaded page*.
-        # Using Math.max with various properties for robustness.
         js_get_page_dimensions = """
             return {
                 width: Math.max(
@@ -66,43 +108,21 @@ def take_fullpage_screenshot(driver, url, output_path):
             };
         """
         dimensions = driver.execute_script(js_get_page_dimensions)
-        
         page_content_height = dimensions['height']
-        # The screenshot width will be our target desktop width.
-        # The page's actual content width (dimensions['width']) might be different (e.g. if page is not responsive or narrower by design)
-        # but we force TARGET_DESKTOP_WIDTH for consistency in "desktop view" testing.
         screenshot_width = TARGET_DESKTOP_WIDTH
-        
-        # The screenshot height should be the page's full scroll height,
-        # but not less than our defined initial/minimum height to avoid overly small/problematic screenshots.
         screenshot_height = max(page_content_height, TARGET_INITIAL_DESKTOP_HEIGHT)
 
-        print(f"[{url}] Page content height: {page_content_height}px. Final screenshot size: {screenshot_width}x{screenshot_height}")
-
-        # 3. Set window size to capture the full page content.
+        # print(f"[{url}] Page content height: {page_content_height}px. Final screenshot size: {screenshot_width}x{screenshot_height}") # Already verbose
         driver.set_window_size(screenshot_width, screenshot_height)
-        # IMPORTANT: Wait for the browser to re-render the page at the new (potentially very tall) size.
-        # This duration might need adjustment for pages with complex layouts or heavy JavaScript.
-        time.sleep(1.5) # Increased from 0.5 or 1 to give more reliable rendering time
+        time.sleep(1.5)
 
-        # 4. Save the screenshot.
         driver.save_screenshot(output_path)
         print(f"[{url}] Screenshot saved: {output_path}")
-
         page_title = driver.title
-        
-        # 5. Optional: Reset window size back to initial default after screenshot.
-        # While the next call to this function will do its own reset, this can be
-        # a good practice if the driver instance is used for other things between screenshot calls.
-        # driver.set_window_size(TARGET_DESKTOP_WIDTH, TARGET_INITIAL_DESKTOP_HEIGHT)
-        # time.sleep(0.1) # Brief pause
-
         return page_title
 
     except Exception as e:
-        print(f"[{url}] Error taking screenshot: {e}")
-        # Attempt to reset window size to a known default if an error occurs,
-        # to minimize impact on subsequent screenshot attempts with the same driver instance.
+        print(f"[{url}] General error in take_fullpage_screenshot: {e}")
         try:
             driver.set_window_size(TARGET_DESKTOP_WIDTH, TARGET_INITIAL_DESKTOP_HEIGHT)
         except Exception as reset_e:
@@ -111,12 +131,7 @@ def take_fullpage_screenshot(driver, url, output_path):
 
 
 # --- Main Crawl Function ---
-def crawl_website(start_url, output_dir_base):
-    """
-    Crawls a website starting from start_url, takes screenshots,
-    and stores them. Ignores URLs ending with .pdf.
-    Returns a dictionary: {normalized_relative_path: {'path': 'screenshot_path.png', 'title': 'Page Title', 'full_url': '...'}}
-    """
+def crawl_website(start_url, output_dir_base, is_modern_site=False):
     domain_name = get_domain(start_url)
     if not domain_name:
         print(f"Invalid start URL: {start_url}")
@@ -136,38 +151,42 @@ def crawl_website(start_url, output_dir_base):
     try:
         driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=chrome_options)
     except Exception as e:
-        print(f"Failed to initialize WebDriver: {e}. Ensure ChromeDriver is installed and in PATH.")
+        print(f"Failed to initialize WebDriver: {e}.")
         return {}
-
+    
     count = 0
     while to_visit:
         current_url = to_visit.pop()
-
-        # Check if URL ends with .pdf (case-insensitive) before processing
+        
         parsed_current_url = urlparse(current_url)
-        if parsed_current_url.path.lower().endswith(".pdf"):
-            print(f"Skipping PDF URL: {current_url}")
-            visited.add(current_url) # Add to visited to avoid re-adding from other pages
+        current_url_path_lower = parsed_current_url.path.lower()
+        if any(current_url_path_lower.endswith(ext) for ext in EXTENSIONS_TO_IGNORE):
+            # print(f"Skipping PDF URL: {current_url}") # Already verbose
+            visited.add(current_url)
             continue
-
         if current_url in visited:
             continue
-
+        
         visited.add(current_url)
-        print(f"Visiting: {current_url}")
+        print(f"Visiting: {current_url} (Is Modern Site: {is_modern_site})")
 
         try:
             relative_url_path = parsed_current_url.path.strip('/')
-            if not relative_url_path:
-                filename_base = "index"
-            else:
-                filename_base = relative_url_path.replace('/', '_').replace('.', '_')
+            if not relative_url_path: filename_base = "index"
+            else: filename_base = relative_url_path.replace('/', '_').replace('.', '_')
             screenshot_filename = f"page_{count}_{filename_base}.png"
             full_screenshot_path = os.path.join(output_dir_base, screenshot_filename)
 
-            page_title = take_fullpage_screenshot(driver, current_url, full_screenshot_path)
+            page_title = take_fullpage_screenshot(
+                driver,
+                current_url,
+                full_screenshot_path,
+                is_modern_site_with_elements_to_hide=is_modern_site, # Pass the flag
+                # Pass the list of selectors if it's the modern site, otherwise None
+                selectors_to_hide=ELEMENT_SELECTORS_TO_HIDE_ON_NEW_SITE if is_modern_site else None 
+            )
             count += 1
-
+            
             if page_title is not None:
                 normalized_path = get_normalized_relative_path(start_url, current_url)
                 pages_data[normalized_path] = {
@@ -176,44 +195,32 @@ def crawl_website(start_url, output_dir_base):
                     'full_url': current_url
                 }
 
-            # --- Find internal links ---
-            # Use requests for fetching HTML to find links, as Selenium is slower for this part
-            # Ensure requests also skips PDFs if it tries to fetch their content type for some reason (though not strictly necessary here)
+            # ... (rest of your link finding logic) ...
             try:
-                # Perform a HEAD request first to check content type if needed,
-                # or just rely on URL string for link discovery.
-                # For now, we'll just fetch and parse.
                 page_content_response = requests.get(current_url, timeout=10)
                 page_content_response.raise_for_status()
-                # Avoid parsing non-HTML content for links
                 if 'text/html' not in page_content_response.headers.get('Content-Type', '').lower():
-                    print(f"Skipping link extraction from non-HTML page: {current_url}")
+                    # print(f"Skipping link extraction from non-HTML page: {current_url}") # Already verbose
                     continue
                 soup = BeautifulSoup(page_content_response.content, 'html.parser')
             except requests.RequestException as e:
                 print(f"Could not fetch content for link extraction from {current_url}: {e}")
                 continue
 
-
             for link in soup.find_all('a', href=True):
                 href = link['href']
                 joined_url = urljoin(current_url, href)
                 parsed_joined_url = urlparse(joined_url)
-
-                # Remove fragment and query parameters for crawling and PDF check
-                clean_url_path = parsed_joined_url.path
+                clean_url_path_lower = parsed_joined_url.path.lower()
                 clean_url_for_visit = parsed_joined_url._replace(query="", fragment="").geturl()
 
-                # Check for PDF extension on discovered links
-                if clean_url_path.lower().endswith(".pdf"):
-                    print(f"Ignoring discovered PDF link: {joined_url}")
+                if any(clean_url_path_lower.endswith(ext) for ext in EXTENSIONS_TO_IGNORE):
+                    # print(f"Ignoring discovered link with extension '{clean_url_path_lower.split('.')[-1]}': {joined_url}")
                     continue
-
                 if get_domain(clean_url_for_visit) == domain_name and clean_url_for_visit not in visited:
                     to_visit.add(clean_url_for_visit)
-
-        except Exception as e: # Catching general exceptions from screenshotting or parsing
+        except Exception as e:
             print(f"Error processing {current_url}: {e}")
-
+            
     driver.quit()
     return pages_data
