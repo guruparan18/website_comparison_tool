@@ -6,7 +6,35 @@
     <style>
         body { font-family: sans-serif; margin: 20px; }
         .container { max-width: 1200px; margin: auto; }
-        .form-group { margin-bottom: 15px; }
+        .form-group label {
+            display: block; /* Keep label on its own line above the input row */
+            margin-bottom: 5px; /* Existing style */
+            font-weight: bold; /* Optional: make label slightly more prominent */
+        }
+
+        .input-row {
+            display: flex;       /* Arrange input and select in a row */
+            align-items: center; /* Vertically align items if they have different heights */
+            gap: 10px;           /* Space between the input and select elements */
+        }
+
+        .url-input { /* Style for the URL text input */
+            flex-grow: 1;        /* Allows the URL input to take up most of the available space */
+            padding: 8px;        /* Consistent padding */
+            box-sizing: border-box;
+            border: 1px solid #ccc; /* Example border */
+            border-radius: 4px;    /* Example rounded corners */
+        }
+
+        .existing-crawl-select { /* Style for the select dropdown */
+            /* flex-grow: 0; Default, so it takes its content width or a defined width */
+            min-width: 220px;   /* Adjust as needed, or use a percentage like width: 30%; */
+            padding: 8px;       /* Consistent padding */
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            /* Remove specific top/bottom margins if .input-row gap is sufficient */
+        }
         label { display: block; margin-bottom: 5px; }
         input[type="url"] { width: 100%; padding: 8px; box-sizing: border-box; }
         button { padding: 10px 15px; background-color: #007bff; color: white; border: none; cursor: pointer; }
@@ -111,48 +139,43 @@
 
         <form method="POST">
             <div class="form-group">
-                <label for="url1">Legacy Website Root URL:</label>
-                <input type="url" id="url1" name="url1" required value="{{ form_url1 or '' }}">
-                
-                <label for="existing_crawl_url1" style="margin-top: 5px; font-size: 0.9em;">
-                    Or use existing data for Legacy URL:
-                </label>
-                <select name="existing_crawl_url1" id="existing_crawl_url1" class="existing-crawl-select">
-                    <option value="">-- Crawl Fresh --</option>
-                    {% for site_folder, timestamps in available_crawls.items() %}
-                        <optgroup label="Site: {{ site_folder }}">
-                            {% for ts in timestamps %}
-                                {# Value is 'site_folder_name/timestamp_folder' #}
-                                <option value="{{ site_folder }}/{{ ts }}"
-                                        {% if selected_existing_crawl1 == site_folder + '/' + ts %}selected{% endif %}>
-                                    Run from: {{ ts }}
-                                </option>
-                            {% endfor %}
-                        </optgroup>
-                    {% endfor %}
-                </select>
+                <label for="url1">Enter Legacy Website Root URL (or use existing data):</label>
+                <div class="input-row">
+                    <input type="url" id="url1" name="url1" class="url-input" placeholder="e.g., http://legacy.example.com" required value="{{ form_url1 or '' }}">
+                    <select name="existing_crawl_url1" id="existing_crawl_url1" class="existing-crawl-select">
+                        <option value="">-- Crawl Fresh --</option>
+                        {% for site_folder, timestamps in available_crawls.items() %}
+                            <optgroup label="Site: {{ site_folder }}">
+                                {% for ts in timestamps %}
+                                    <option value="{{ site_folder }}/{{ ts }}"
+                                            {% if selected_existing_crawl1 == site_folder + '/' + ts %}selected{% endif %}>
+                                        Run from: {{ ts }}
+                                    </option>
+                                {% endfor %}
+                            </optgroup>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
 
             <div class="form-group">
-                <label for="url2">Modern Website Root URL:</label>
-                <input type="url" id="url2" name="url2" required value="{{ form_url2 or '' }}">
-
-                <label for="existing_crawl_url2" style="margin-top: 5px; font-size: 0.9em;">
-                    Or use existing data for Modern URL:
-                </label>
-                <select name="existing_crawl_url2" id="existing_crawl_url2" class="existing-crawl-select">
-                    <option value="">-- Crawl Fresh --</option>
-                     {% for site_folder, timestamps in available_crawls.items() %}
-                        <optgroup label="Site: {{ site_folder }}">
-                            {% for ts in timestamps %}
-                                <option value="{{ site_folder }}/{{ ts }}"
-                                        {% if selected_existing_crawl2 == site_folder + '/' + ts %}selected{% endif %}>
-                                    Run from: {{ ts }}
-                                </option>
-                            {% endfor %}
-                        </optgroup>
-                    {% endfor %}
-                </select>
+                <label for="url2">Enter Modern Website Root URL (or use existing data):</label>
+                <div class="input-row">
+                    <input type="url" id="url2" name="url2" class="url-input" placeholder="e.g., http://modern.example.com" required value="{{ form_url2 or '' }}">
+                    <select name="existing_crawl_url2" id="existing_crawl_url2" class="existing-crawl-select">
+                        <option value="">-- Crawl Fresh --</option>
+                         {% for site_folder, timestamps in available_crawls.items() %}
+                            <optgroup label="Site: {{ site_folder }}">
+                                {% for ts in timestamps %}
+                                    <option value="{{ site_folder }}/{{ ts }}"
+                                            {% if selected_existing_crawl2 == site_folder + '/' + ts %}selected{% endif %}>
+                                        Run from: {{ ts }}
+                                    </option>
+                                {% endfor %}
+                            </optgroup>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
             <button type="submit" {% if crawl_status and crawl_status.running %}disabled{% endif %}>Start Comparison</button>
         </form>
