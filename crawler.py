@@ -13,10 +13,23 @@ import time
 import os
 from PIL import Image
 
-ELEMENT_SELECTORS_TO_HIDE_ON_NEW_SITE = [
-    ".usa-accordion",  # Selector for the accordion
-    "#alertBanner",  # Selector for the alert banner (using ID is more specific)
-]
+ELEMENT_SELECTORS_TO_HIDE_ON_NEW_SITE = None
+# [
+    # ".usa-accordion",  # Selector for the accordion
+    # "#alertBanner",  # Selector for the alert banner (using ID is more specific)
+    # "#app-footer",
+    # "#top-navigation",
+# ]
+
+ELEMENT_SELECTORS_TO_HIDE_ON_LEGACY_SITE = None
+# [
+    # "#stacks_in_474_31"  # Use this if the ID is static and reliable
+    # "#stacks_out_474_31"
+    # ".stacks_in.com_elixir_stacks_foundryContainer_stack",
+# ]
+
+STOP_CRAWL_URLS_LEGACY = []
+STOP_CRAWL_URLS_MODERN = []
 
 EXTENSIONS_TO_IGNORE = [".pdf", ".mp4"]
 
@@ -61,8 +74,8 @@ def take_fullpage_screenshot(
     driver,
     url,
     output_path,
-    is_modern_site_with_elements_to_hide=False,
-    selectors_to_hide=None,
+    apply_element_hiding=False,
+    selectors_list_to_hide=None,
 ):  # Changed parameter name for clarity
     """
     Navigates to a URL, optionally hides specified elements, and takes a full-page screenshot.
@@ -73,17 +86,16 @@ def take_fullpage_screenshot(
 
         # Conditionally hide elements if this is the modern site and selectors are provided
         if (
-            is_modern_site_with_elements_to_hide
-            and selectors_to_hide
-            and isinstance(selectors_to_hide, list)
+            apply_element_hiding
+            and selectors_list_to_hide
+            and isinstance(selectors_list_to_hide, list)
         ):
-            print(f"[{url}] Attempting to hide specified elements for modern site...")
+            print(f"[{url}] Attempting to hide specified elements...")
             any_element_actioned = False
-            for selector in selectors_to_hide:
-                if not selector.strip():  # Skip empty selectors
+            for selector in selectors_list_to_hide:  # Use the passed list
+                if not selector.strip():
                     continue
                 try:
-                    # JavaScript to find all elements matching the selector and set their display to 'none'
                     js_hide_elements = f"""
                         let els = document.querySelectorAll('{selector}');
                         let hiddenCount = 0;
@@ -93,7 +105,7 @@ def take_fullpage_screenshot(
                                 hiddenCount++;
                             }});
                         }}
-                        return hiddenCount; // Return how many elements were hidden by this selector
+                        return hiddenCount;
                     """
                     num_hidden = driver.execute_script(js_hide_elements)
                     if num_hidden > 0:
@@ -109,15 +121,11 @@ def take_fullpage_screenshot(
                     )
 
             if any_element_actioned:
-                time.sleep(
-                    0.5
-                )  # Give a brief moment for the page to reflow if anything was hidden
+                time.sleep(0.5)
                 print(f"[{url}] Element hiding process completed.")
-        elif (
-            is_modern_site_with_elements_to_hide and selectors_to_hide
-        ):  # If it's not a list
+        elif apply_element_hiding and selectors_list_to_hide:
             print(
-                f"[{url}] Warning: selectors_to_hide was provided but is not a list. Type: {type(selectors_to_hide)}"
+                f"[{url}] Warning: selectors_list_to_hide was provided but is not a list. Type: {type(selectors_list_to_hide)}"
             )
 
         # Reset window to a known state before measuring the new page's content.
@@ -164,16 +172,16 @@ def take_fullpage_screenshot(
 
 # --- Main Crawl Function ---
 def crawl_website(start_url, output_dir_base, is_modern_site=False):
+    # ... (domain_name, to_visit, visited, pages_data, chrome_options, driver init as before) ...
     domain_name = get_domain(start_url)
-    if not domain_name:
-        print(f"Invalid start URL: {start_url}")
+    if not domain_name:  # ... (handle invalid start URL)
         return {}
-
+    # ... (Initialize chrome_options, driver etc.)
     to_visit = {start_url}
     visited = set()
     pages_data = {}
 
-    chrome_options = Options()
+    chrome_options = Options()  # Re-initialize or ensure it's correctly scoped
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
@@ -181,7 +189,6 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
     chrome_options.add_argument(
         f"window-size={TARGET_DESKTOP_WIDTH},{TARGET_INITIAL_DESKTOP_HEIGHT}"
     )
-
     try:
         driver = webdriver.Chrome(
             service=ChromeService(ChromeDriverManager().install()),
@@ -194,11 +201,10 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
     count = 0
     while to_visit:
         current_url = to_visit.pop()
-
+        # ... (URL parsing, extension skipping, visited check as before) ...
         parsed_current_url = urlparse(current_url)
         current_url_path_lower = parsed_current_url.path.lower()
         if any(current_url_path_lower.endswith(ext) for ext in EXTENSIONS_TO_IGNORE):
-            # print(f"Skipping PDF URL: {current_url}") # Already verbose
             visited.add(current_url)
             continue
         if current_url in visited:
@@ -208,6 +214,7 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
         print(f"Visiting: {current_url} (Is Modern Site: {is_modern_site})")
 
         try:
+            # ... (screenshot filename generation) ...
             relative_url_path = parsed_current_url.path.strip("/")
             if not relative_url_path:
                 filename_base = "index"
@@ -216,18 +223,30 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
             screenshot_filename = f"page_{count}_{filename_base}.png"
             full_screenshot_path = os.path.join(output_dir_base, screenshot_filename)
 
+            # Determine which selectors to use based on the site type
+            current_stop_list = (
+                STOP_CRAWL_URLS_MODERN if is_modern_site else STOP_CRAWL_URLS_LEGACY
+            )
+            selectors_for_current_site = None
+            if is_modern_site:
+                selectors_for_current_site = ELEMENT_SELECTORS_TO_HIDE_ON_NEW_SITE
+            else:  # It's the legacy site
+                selectors_for_current_site = ELEMENT_SELECTORS_TO_HIDE_ON_LEGACY_SITE
+
+            should_apply_hiding = bool(
+                selectors_for_current_site
+            )  # True if list is not empty/None
+
             page_title = take_fullpage_screenshot(
                 driver,
                 current_url,
                 full_screenshot_path,
-                is_modern_site_with_elements_to_hide=is_modern_site,  # Pass the flag
-                # Pass the list of selectors if it's the modern site, otherwise None
-                selectors_to_hide=ELEMENT_SELECTORS_TO_HIDE_ON_NEW_SITE
-                if is_modern_site
-                else None,
+                apply_element_hiding=should_apply_hiding,
+                selectors_list_to_hide=selectors_for_current_site,
             )
             count += 1
 
+            # ... (pages_data population and link finding logic as before) ...
             if page_title is not None:
                 normalized_path = get_normalized_relative_path(start_url, current_url)
                 pages_data[normalized_path] = {
@@ -235,8 +254,6 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
                     "title": page_title,
                     "full_url": current_url,
                 }
-
-            # ... (rest of your link finding logic) ...
             try:
                 page_content_response = requests.get(current_url, timeout=10)
                 page_content_response.raise_for_status()
@@ -244,7 +261,6 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
                     "text/html"
                     not in page_content_response.headers.get("Content-Type", "").lower()
                 ):
-                    # print(f"Skipping link extraction from non-HTML page: {current_url}") # Already verbose
                     continue
                 soup = BeautifulSoup(page_content_response.content, "html.parser")
             except requests.RequestException as e:
@@ -255,6 +271,7 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
 
             for link in soup.find_all("a", href=True):
                 href = link["href"]
+                # ... (URL processing for links as before) ...
                 joined_url = urljoin(current_url, href)
                 parsed_joined_url = urlparse(joined_url)
                 clean_url_path_lower = parsed_joined_url.path.lower()
@@ -265,7 +282,6 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
                 if any(
                     clean_url_path_lower.endswith(ext) for ext in EXTENSIONS_TO_IGNORE
                 ):
-                    # print(f"Ignoring discovered link with extension '{clean_url_path_lower.split('.')[-1]}': {joined_url}")
                     continue
                 if (
                     get_domain(clean_url_for_visit) == domain_name

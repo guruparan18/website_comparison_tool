@@ -93,44 +93,61 @@ def analyze_pixel_and_structural_differences(
         # 2. Pixel Difference Percentage
         abs_diff_img = cv2.absdiff(gray1_np, gray2_np)
         # Threshold needs tuning: lower is more sensitive. Start with 25-35.
-        _, threshold_img = cv2.threshold(abs_diff_img, PIXEL_DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
+        _, threshold_img = cv2.threshold(
+            abs_diff_img, PIXEL_DIFF_THRESHOLD, 255, cv2.THRESH_BINARY
+        )
 
         img_h, img_w = threshold_img.shape
         total_pixels_in_image = img_h * img_w
         diff_pixels = cv2.countNonZero(threshold_img)
-        analysis_results["diff_percent"] = (diff_pixels / total_pixels_in_image) * 100 if total_pixels_in_image > 0 else 0
+        analysis_results["diff_percent"] = (
+            (diff_pixels / total_pixels_in_image) * 100
+            if total_pixels_in_image > 0
+            else 0
+        )
 
         # 3. Contour Analysis on the threshold_img
         # Use threshold_img.copy() if findContours modifies the source (depends on OpenCV version)
-        contours, _ = cv2.findContours(threshold_img.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
+        contours, _ = cv2.findContours(
+            threshold_img.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+
         significant_contours = []
         if contours:
             for contour in contours:
                 area = cv2.contourArea(contour)
                 if area >= MIN_CONTOUR_AREA:
                     significant_contours.append(contour)
-            
+
             analysis_results["num_significant_diff_regions"] = len(significant_contours)
-            
+
             if significant_contours:
                 largest_contour = max(significant_contours, key=cv2.contourArea)
                 largest_area = cv2.contourArea(largest_contour)
-                analysis_results["largest_diff_region_area_percent"] = \
-                    (largest_area / total_pixels_in_image) * 100 if total_pixels_in_image > 0 else 0.0
-        
+                analysis_results["largest_diff_region_area_percent"] = (
+                    (largest_area / total_pixels_in_image) * 100
+                    if total_pixels_in_image > 0
+                    else 0.0
+                )
+
         # 4. Save Visual Difference Image (the thresholded one)
         if diff_image_save_rel_path:
-            abs_save_path = os.path.abspath(diff_image_save_rel_path) # Already project-relative
+            abs_save_path = os.path.abspath(
+                diff_image_save_rel_path
+            )  # Already project-relative
             try:
                 os.makedirs(os.path.dirname(abs_save_path), exist_ok=True)
                 # Save the threshold_img (black and white diff)
-                Image.fromarray(threshold_img).save(abs_save_path) # Use Pillow to save to handle paths easily
-                analysis_results["diff_image_template_path"] = _get_path_for_template(diff_image_save_rel_path)
+                Image.fromarray(threshold_img).save(
+                    abs_save_path
+                )  # Use Pillow to save to handle paths easily
+                analysis_results["diff_image_template_path"] = _get_path_for_template(
+                    diff_image_save_rel_path
+                )
                 print(f"  Visual difference image saved: {abs_save_path}")
             except Exception as e_save:
                 print(f"  ERROR saving visual diff image to {abs_save_path}: {e_save}")
-        
+
         return analysis_results
 
     except FileNotFoundError:
@@ -361,8 +378,12 @@ def compare_pages(pages1_data, pages2_data, base_url1, base_url2):
 
             result_entry["score"] = analysis["ssim_score"]
             result_entry["diff_percent"] = analysis["diff_percent"]
-            result_entry["num_significant_diff_regions"] = analysis["num_significant_diff_regions"]
-            result_entry["largest_diff_region_area_percent"] = analysis["largest_diff_region_area_percent"]
+            result_entry["num_significant_diff_regions"] = analysis[
+                "num_significant_diff_regions"
+            ]
+            result_entry["largest_diff_region_area_percent"] = analysis[
+                "largest_diff_region_area_percent"
+            ]
             result_entry["diff_image_template_path"] = analysis[
                 "diff_image_template_path"
             ]
@@ -374,10 +395,12 @@ def compare_pages(pages1_data, pages2_data, base_url1, base_url2):
             ]  # Keep this for now, can be removed from display later if not needed
 
             if analysis["ssim_score"] is not None:
-                print(f"  SSIM: {analysis['ssim_score']:.4f} ({classification['text']}), "
-                      f"Diff %: {analysis['diff_percent']:.2f}%, "
-                      f"Sig. Regions: {analysis['num_significant_diff_regions']}, "
-                      f"Largest Region: {analysis['largest_diff_region_area_percent']:.2f}%")
+                print(
+                    f"  SSIM: {analysis['ssim_score']:.4f} ({classification['text']}), "
+                    f"Diff %: {analysis['diff_percent']:.2f}%, "
+                    f"Sig. Regions: {analysis['num_significant_diff_regions']}, "
+                    f"Largest Region: {analysis['largest_diff_region_area_percent']:.2f}%"
+                )
             else:
                 print(f"  Analysis failed or was skipped for '{norm_path}'.")
         # ... (elif data1, elif data2, results.append, sort) ...
