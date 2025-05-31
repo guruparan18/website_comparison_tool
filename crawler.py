@@ -13,13 +13,12 @@ import time
 import os
 from PIL import Image
 
-ELEMENT_SELECTORS_TO_HIDE_ON_NEW_SITE = None
-# [
-    # ".usa-accordion",  # Selector for the accordion
-    # "#alertBanner",  # Selector for the alert banner (using ID is more specific)
+ELEMENT_SELECTORS_TO_HIDE_ON_NEW_SITE = [
+    ".usa-accordion",  # Selector for the accordion
+    "#alertBanner",  # Selector for the alert banner (using ID is more specific)
     # "#app-footer",
     # "#top-navigation",
-# ]
+]
 
 ELEMENT_SELECTORS_TO_HIDE_ON_LEGACY_SITE = None
 # [
