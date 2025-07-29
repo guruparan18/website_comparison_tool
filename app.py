@@ -12,6 +12,7 @@ import threading
 import json  # For saving/loading crawled_data.json
 import crawler
 import comparator
+import traceback
 
 SCREENSHOT_DIRECTORY_NAME = "screenshots"
 
@@ -170,6 +171,7 @@ def index():
             site2_info["action"] = "crawl"
 
         crawl_status["running"] = True
+        crawl_status["start_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         crawl_status["message"] = "Processing... preparing to crawl or load data."
 
         thread = threading.Thread(
@@ -274,6 +276,7 @@ def run_comparison_workflow(url1, site1_info, url2, site2_info, new_run_timestam
 
     except Exception as e:
         print(f"ERROR during comparison workflow: {e}")
+        traceback.print_exc()
         crawl_status["message"] = (
             f"Workflow Error: {str(e)}"  # Display the error message
         )

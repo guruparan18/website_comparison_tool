@@ -381,9 +381,9 @@ def compare_pages(pages1_data, pages2_data, base_url1, base_url2):
             result_entry["num_significant_diff_regions"] = analysis[
                 "num_significant_diff_regions"
             ]
-            result_entry["largest_diff_region_area_percent"] = analysis[
-                "largest_diff_region_area_percent"
-            ]
+            result_entry["largest_diff_region_area_percent"] = analysis.get(
+                "largest_diff_region_area_percent", 0.0
+            )
             result_entry["diff_image_template_path"] = analysis[
                 "diff_image_template_path"
             ]
@@ -396,10 +396,10 @@ def compare_pages(pages1_data, pages2_data, base_url1, base_url2):
 
             if analysis["ssim_score"] is not None:
                 print(
-                    f"  SSIM: {analysis['ssim_score']:.4f} ({classification['text']}), "
-                    f"Diff %: {analysis['diff_percent']:.2f}%, "
-                    f"Sig. Regions: {analysis['num_significant_diff_regions']}, "
-                    f"Largest Region: {analysis['largest_diff_region_area_percent']:.2f}%"
+                    f"  SSIM: {analysis.get('ssim_score', 0):.4f} ({classification['text']}), "
+                    f"Diff %: {analysis.get('diff_percent', 0):.2f}%, "
+                    f"Sig. Regions: {analysis.get('num_significant_diff_regions', 0)}, "
+                    f"Largest Region: {analysis.get('largest_diff_region_area_percent', 0):.2f}%"
                 )
             else:
                 print(f"  Analysis failed or was skipped for '{norm_path}'.")
