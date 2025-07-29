@@ -5,6 +5,7 @@ from PIL import Image
 import numpy as np
 import os
 import time
+import re
 
 # This constant MUST match the value of static_folder in app.py's Flask constructor
 # AND app.config['UPLOAD_FOLDER']. It's the root directory for all screenshot data.
@@ -284,22 +285,84 @@ def get_ssim_classification(score):
         return {"text": "Low Similarity", "range_display": "(<= 0.60)"}
 
 
+def _normalize_path(path):
+    """Normalizes path for comparison.
+    If it starts with judges/, replaces numbers with a placeholder.
+    """
+    if path and path.startswith('judges/'):
+        # Replaces any sequence of digits with '[num]'
+        return re.sub(r'\d+', '[num]', path)
+    return path
+
+
 def compare_pages(pages1_data, pages2_data, base_url1, base_url2):
     results = []
-    all_normalized_paths = sorted(
-        list(set(pages1_data.keys()) | set(pages2_data.keys()))
-    )
-    total_paths = len(all_normalized_paths)
+    
+    paths1 = set(pages1_data.keys())
+    paths2 = set(pages2_data.keys())
+
+    # Create a mapping from each normalized path to a list of original paths
+    norm_to_orig1 = {}
+    for path in paths1:
+        norm = _normalize_path(path)
+        if norm not in norm_to_orig1:
+            norm_to_orig1[norm] = []
+        norm_to_orig1[norm].append(path)
+
+    norm_to_orig2 = {}
+    for path in paths2:
+        norm = _normalize_path(path)
+        if norm not in norm_to_orig2:
+            norm_to_orig2[norm] = []
+        norm_to_orig2[norm].append(path)
+
+    matched_pairs = []
+    unmatched1 = set(paths1)
+    unmatched2 = set(paths2)
+
+    # Find normalized paths that exist in both sites
+    common_norm_keys = set(norm_to_orig1.keys()) & set(norm_to_orig2.keys())
+
+    for norm_key in sorted(list(common_norm_keys)):
+        # Get the lists of original paths for the current normalized key
+        list1 = sorted(norm_to_orig1[norm_key])
+        list2 = sorted(norm_to_orig2[norm_key])
+
+        # Match items from each list one-to-one
+        while list1 and list2:
+            p1 = list1.pop(0)
+            p2 = list2.pop(0)
+            matched_pairs.append((p1, p2))
+            # Remove the matched paths from the unmatched sets
+            if p1 in unmatched1:
+                unmatched1.remove(p1)
+            if p2 in unmatched2:
+                unmatched2.remove(p2)
+
+    # Add the remaining truly unmatched paths
+    for path1 in sorted(list(unmatched1)):
+        matched_pairs.append((path1, None))
+    for path2 in sorted(list(unmatched2)):
+        matched_pairs.append((None, path2))
+
+    total_paths = len(matched_pairs)
     print(f"\nStarting comparison of {total_paths} unique page paths...")
 
-    for i, norm_path in enumerate(all_normalized_paths):
-        # ... (result_entry initialization, title, url, and thumbnail path generation as before) ...
-        print(f"\n--- Comparing page {i + 1}/{total_paths}: '{norm_path}' ---")
-        data1 = pages1_data.get(norm_path)
-        data2 = pages2_data.get(norm_path)
+    for i, (path1, path2) in enumerate(matched_pairs):
+        if path1 and path2:
+            norm_path_display = path1 if path1 == path2 else f"{path1} ~ {path2}"
+        else:
+            norm_path_display = path1 or path2
+
+        # This path is used for filenames, so it should be a single path
+        file_norm_path = path1 or path2
+
+        print(f"\n--- Comparing page {i + 1}/{total_paths}: '{norm_path_display}' ---")
+        data1 = pages1_data.get(path1) if path1 else None
+        data2 = pages2_data.get(path2) if path2 else None
 
         result_entry = {
-            "normalized_path": norm_path,
+            "normalized_path": norm_path_display,
             "title1": "N/A",
             "title2": "N/A",
             "full_url1": "#",
@@ -314,9 +377,8 @@ def compare_pages(pages1_data, pages2_data, base_url1, base_url2):
             "diff_percent": None,
             "num_significant_diff_regions": 0,
             "largest_diff_region_area_percent": 0.0,
-            "diff_image_template_path": None,  # New fields
+            "diff_image_template_path": None,
         }
-        # ... (Populate titles, full_urls, imgX_full, imgX_thumb paths using _get_path_for_template as before)
         if data1:
             result_entry.update(
                 {
@@ -354,26 +416,24 @@ def compare_pages(pages1_data, pages2_data, base_url1, base_url2):
                 )
 
         if result_entry["img1_full"] and result_entry["img2_full"]:
-            print(f"  Analyzing differences for '{norm_path}'...")
+            print(f"  Analyzing differences for '{norm_path_display}'...")
             start_time = time.time()
 
-            # Construct path to save diff image
-            # It will be saved relative to project root, e.g., screenshots/site1_name/timestamp/diff_norm_path.png
-            diff_img_filename = f"diff_{norm_path.replace('/', '_')}_{os.path.basename(data1['img_path'])}.png"
+            diff_img_filename = f"diff_{file_norm_path.replace('/', '_')}_{os.path.basename(data1['img_path'])}.png"
             diff_image_save_location = None
-            if data1 and data1.get("img_path"):  # Use first image's directory structure
+            if data1 and data1.get("img_path"):
                 diff_image_save_location = os.path.join(
                     os.path.dirname(data1["img_path"]), diff_img_filename
                 )
 
             analysis = analyze_pixel_and_structural_differences(
-                data1["img_path"],  # Original project-relative path
-                data2["img_path"],  # Original project-relative path
+                data1["img_path"],
+                data2["img_path"],
                 diff_image_save_location,
             )
             end_time = time.time()
             print(
-                f"  Analysis for '{norm_path}' took {end_time - start_time:.2f} seconds."
+                f"  Analysis for '{norm_path_display}' took {end_time - start_time:.2f} seconds."
             )
 
             result_entry["score"] = analysis["ssim_score"]
@@ -392,7 +452,7 @@ def compare_pages(pages1_data, pages2_data, base_url1, base_url2):
             result_entry["ssim_classification_text"] = classification["text"]
             result_entry["ssim_classification_range"] = classification[
                 "range_display"
-            ]  # Keep this for now, can be removed from display later if not needed
+            ]
 
             if analysis["ssim_score"] is not None:
                 print(
@@ -402,12 +462,11 @@ def compare_pages(pages1_data, pages2_data, base_url1, base_url2):
                     f"Largest Region: {analysis.get('largest_diff_region_area_percent', 0):.2f}%"
                 )
             else:
-                print(f"  Analysis failed or was skipped for '{norm_path}'.")
-        # ... (elif data1, elif data2, results.append, sort) ...
+                print(f"  Analysis failed or was skipped for '{norm_path_display}'.")
         elif data1:
-            print(f"  Page only in site 1: {norm_path}")
+            print(f"  Page only in site 1: {path1}")
         elif data2:
-            print(f"  Page only in site 2: {norm_path}")
+            print(f"  Page only in site 2: {path2}")
         results.append(result_entry)
 
     results.sort(
@@ -419,3 +478,5 @@ def compare_pages(pages1_data, pages2_data, base_url1, base_url2):
     )
     print(f"\nComparison finished. Processed {total_paths} page paths.")
     return results
+
+

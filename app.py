@@ -13,6 +13,7 @@ import json  # For saving/loading crawled_data.json
 import crawler
 import comparator
 import traceback
+import re
 
 SCREENSHOT_DIRECTORY_NAME = "screenshots"
 
@@ -170,6 +171,12 @@ def index():
         else:
             site2_info["action"] = "crawl"
 
+        # Save context for the text comparison view BEFORE starting the thread
+        session['comparison_context'] = {
+            'site1_path': site1_info.get('path') or os.path.join(site1_info['site_name_sanitized'], new_run_timestamp),
+            'site2_path': site2_info.get('path') or os.path.join(site2_info['site_name_sanitized'], new_run_timestamp)
+        }
+
         crawl_status["running"] = True
         crawl_status["start_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         crawl_status["message"] = "Processing... preparing to crawl or load data."
@@ -282,6 +289,90 @@ def run_comparison_workflow(url1, site1_info, url2, site2_info, new_run_timestam
         )
     finally:
         crawl_status["running"] = False
+
+
+def _normalize_path_for_text_comparison(path):
+    """Normalizes path for comparison.
+    If it starts with judges/, replaces numbers with a placeholder.
+    """
+    if path and path.startswith('judges/'):
+        return re.sub(r'\d+', '[num]', path)
+    return path
+
+
+@app.route("/text_comparison")
+def text_comparison():
+    context = session.get('comparison_context')
+    if not context:
+        return "Comparison context not found. Please run a comparison first.", 404
+
+    site1_path = os.path.join(app.config["UPLOAD_FOLDER"], context['site1_path'])
+    site2_path = os.path.join(app.config["UPLOAD_FOLDER"], context['site2_path'])
+
+    data1 = load_crawled_data(site1_path, "text_comparison.json")
+    data2 = load_crawled_data(site2_path, "text_comparison.json")
+
+    if not data1 and not data2:
+        return "Could not load text comparison data for either site.", 404
+
+    data1 = data1 or {}
+    data2 = data2 or {}
+
+    # Path matching logic
+    paths1 = set(data1.keys())
+    paths2 = set(data2.keys())
+
+    norm_to_orig1 = {}
+    for path in paths1:
+        norm = _normalize_path_for_text_comparison(path)
+        if norm not in norm_to_orig1:
+            norm_to_orig1[norm] = []
+        norm_to_orig1[norm].append(path)
+
+    norm_to_orig2 = {}
+    for path in paths2:
+        norm = _normalize_path_for_text_comparison(path)
+        if norm not in norm_to_orig2:
+            norm_to_orig2[norm] = []
+        norm_to_orig2[norm].append(path)
+
+    matched_pairs = []
+    unmatched1 = set(paths1)
+    unmatched2 = set(paths2)
+
+    common_norm_keys = set(norm_to_orig1.keys()) & set(norm_to_orig2.keys())
+
+    for norm_key in sorted(list(common_norm_keys)):
+        list1 = sorted(norm_to_orig1[norm_key])
+        list2 = sorted(norm_to_orig2[norm_key])
+
+        while list1 and list2:
+            p1 = list1.pop(0)
+            p2 = list2.pop(0)
+            matched_pairs.append((p1, p2))
+            if p1 in unmatched1:
+                unmatched1.remove(p1)
+            if p2 in unmatched2:
+                unmatched2.remove(p2)
+
+    # Combine into a list for the template
+    results = []
+    # Add matched pairs first
+    for p1, p2 in sorted(matched_pairs):
+        results.append({
+            "path_display": p1 if p1 == p2 else f"{p1} ~ {p2}",
+            "data1": data1.get(p1),
+            "data2": data2.get(p2)
+        })
+    
+    # Add remaining unmatched paths
+    for p1 in sorted(list(unmatched1)):
+        results.append({"path_display": p1, "data1": data1.get(p1), "data2": None})
+    
+    for p2 in sorted(list(unmatched2)):
+        results.append({"path_display": p2, "data1": None, "data2": data2.get(p2)})
+
+    return render_template("text_comparison.html", results=results)
 
 
 if __name__ == "__main__":

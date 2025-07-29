@@ -182,6 +182,7 @@
 
         {% if results %}
         <h2>Comparison Results:</h2>
+        <a href="{{ url_for('text_comparison') }}" target="_blank" class="btn btn-info" style="margin-bottom: 15px; background-color: #0dcaf0; color: black; border-color: #0dcaf0;">Text Comparison Results</a>
         <div class="results-grid">
             {% for result in results %}
                 <div class="result-item">

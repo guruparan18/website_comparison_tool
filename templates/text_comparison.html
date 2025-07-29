@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Text Comparison Results</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding: 20px;
+        }
+        .table-container {
+            margin-top: 20px;
+        }
+        .table th, .table td {
+            vertical-align: middle;
+        }
+        .table thead th {
+            text-align: center;
+            background-color: #f8f9fa;
+        }
+        .url-col {
+            width: 25%;
+        }
+        .site-col {
+            width: 8%;
+        }
+        .data-col {
+            width: 13%;
+        }
+        .legacy-row {
+            background-color: #fdfdfe;
+        }
+        .modern-row {
+            background-color: #f0f3f5;
+            border-bottom: 2px solid #dee2e6; /* Add a border to separate groups */
+        }
+        .legacy-row td, .modern-row td {
+            text-align: center;
+        }
+        .url-col code {
+            font-size: 0.9em;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <h1>Text Content Comparison</h1>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary mb-3">Back to Main Comparison</a>
+
+        <div class="table-container table-responsive">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th class="url-col">Matched URL Path</th>
+                        <th class="site-col">Site</th>
+                        <th class="data-col">Headers</th>
+                        <th class="data-col">Images</th>
+                        <th class="data-col">Links</th>
+                        <th class="data-col">Word Count</th>
+                        <th class="data-col">Duplicate Text %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in results %}
+                    <tr class="legacy-row">
+                        <td rowspan="2" class="url-col align-middle"><code>{{ item.path_display }}</code></td>
+                        <td class="site-col"><strong>Legacy</strong></td>
+                        {% if item.data1 %}
+                        <td>{{ item.data1.headers }}</td>
+                        <td>{{ item.data1.images }}</td>
+                        <td>{{ item.data1.links }}</td>
+                        <td>{{ "{:,.0f}".format(item.data1.word_count) }}</td>
+                        <td>{{ "%.2f"|format(item.data1.duplicate_text_percent) }}%</td>
+                        {% else %}
+                        <td colspan="5" class="text-center text-muted"><em>Page not found in legacy site</em></td>
+                        {% endif %}
+                    </tr>
+                    <tr class="modern-row">
+                        <td class="site-col"><strong>Modern</strong></td>
+                        {% if item.data2 %}
+                        <td>{{ item.data2.headers }}</td>
+                        <td>{{ item.data2.images }}</td>
+                        <td>{{ item.data2.links }}</td>
+                        <td>{{ "{:,.0f}".format(item.data2.word_count) }}</td>
+                        <td>{{ "%.2f"|format(item.data2.duplicate_text_percent) }}%</td>
+                        {% else %}
+                        <td colspan="5" class="text-center text-muted"><em>Page not found in modern site</em></td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

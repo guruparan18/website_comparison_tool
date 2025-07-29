@@ -12,6 +12,9 @@ from webdriver_manager.chrome import (
 import time
 import os
 from PIL import Image
+import json
+from collections import Counter
+import re
 
 ELEMENT_SELECTORS_TO_HIDE_ON_NEW_SITE = [
     # ".usa-accordion",  # Selector for the accordion
@@ -60,6 +63,65 @@ def get_normalized_relative_path(base_url, url):
     ]
     normalized_path = "/".join(path_segments)
     return normalized_path
+
+
+def analyze_text_content(html_content):
+    """
+    Analyzes the text content of a page for various metrics.
+    """
+    analysis = {
+        "headers": 0,
+        "images": 0,
+        "links": 0,
+        "word_count": 0,
+        "duplicate_text_percent": 0.0,
+    }
+    if not html_content:
+        return analysis
+
+    soup = BeautifulSoup(html_content, "html.parser")
+
+    # 1. Count headers, images, and links
+    analysis["headers"] = len(soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]))
+    analysis["images"] = len(soup.find_all("img"))
+    analysis["links"] = len(soup.find_all("a"))
+
+    # 2. Word count
+    all_text = soup.get_text(separator=" ", strip=True)
+    words = all_text.split()
+    analysis["word_count"] = len(words)
+
+    # 3. Duplicate text percentage
+    # Split text into sentences. This is a simple regex, might not be perfect for all cases.
+    sentences = re.split(r"[.!?]+\s+", all_text)
+    
+    # Normalize, filter, and prepare sentences for counting
+    long_sentences = []
+    for s in sentences:
+        # Normalize: lowercase and remove non-alphanumeric chars for better matching
+        normalized_s = re.sub(r"[^a-z0-9\s]", "", s.lower()).strip()
+        words_in_sentence = normalized_s.split()
+        if len(words_in_sentence) >= 4:
+            long_sentences.append(" ".join(words_in_sentence))
+
+    if not long_sentences:
+        return analysis # No sentences to analyze
+
+    sentence_counts = Counter(long_sentences)
+    
+    # Count words from duplicate sentences
+    duplicate_word_count = 0
+    for sentence, count in sentence_counts.items():
+        if count > 1:
+            # Add the word count of all occurrences of this duplicate sentence
+            duplicate_word_count += len(sentence.split()) * count
+
+    if analysis["word_count"] > 0:
+        analysis["duplicate_text_percent"] = (
+            duplicate_word_count / analysis["word_count"]
+        ) * 100
+    
+    return analysis
 
 
 TARGET_DESKTOP_WIDTH = 1920
@@ -179,6 +241,7 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
     to_visit = {start_url}
     visited = set()
     pages_data = {}
+    text_analysis_data = {} # New dict for text analysis
 
     chrome_options = Options()  # Re-initialize or ensure it's correctly scoped
     chrome_options.add_argument("--headless")
@@ -244,6 +307,9 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
                 selectors_list_to_hide=selectors_for_current_site,
             )
             count += 1
+            
+            # Get page source for text analysis and link finding
+            html_content = driver.page_source
 
             # ... (pages_data population and link finding logic as before) ...
             if page_title is not None:
@@ -253,18 +319,20 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
                     "title": page_title,
                     "full_url": current_url,
                 }
+                # Perform text analysis
+                text_analysis_data[normalized_path] = analyze_text_content(html_content)
+
+
             try:
-                page_content_response = requests.get(current_url, timeout=10)
-                page_content_response.raise_for_status()
-                if (
-                    "text/html"
-                    not in page_content_response.headers.get("Content-Type", "").lower()
-                ):
-                    continue
-                soup = BeautifulSoup(page_content_response.content, "html.parser")
-            except requests.RequestException as e:
+                # Re-use the fetched html_content instead of another request
+                if not html_content:
+                     print(f"Skipping link extraction for {current_url} due to empty content.")
+                     continue
+
+                soup = BeautifulSoup(html_content, "html.parser")
+            except Exception as e:
                 print(
-                    f"Could not fetch content for link extraction from {current_url}: {e}"
+                    f"Could not parse content for link extraction from {current_url}: {e}"
                 )
                 continue
 
@@ -291,4 +359,15 @@ def crawl_website(start_url, output_dir_base, is_modern_site=False):
             print(f"Error processing {current_url}: {e}")
 
     driver.quit()
+    
+    # Save text analysis data to JSON
+    if text_analysis_data:
+        json_output_path = os.path.join(output_dir_base, "text_comparison.json")
+        try:
+            with open(json_output_path, "w") as f:
+                json.dump(text_analysis_data, f, indent=4)
+            print(f"Text analysis data saved to: {json_output_path}")
+        except Exception as e:
+            print(f"Error saving text analysis JSON to {json_output_path}: {e}")
+
     return pages_data
